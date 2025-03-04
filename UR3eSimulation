@@ -1,0 +1,202 @@
+classdef UR3eSimulation < handle
+    % UR3eSimulation manages the setup and simulation of a UR3e robot
+    % mounted on linear rails with environment objects and safety features.
+    
+    % Properties
+    properties
+        robot            % UR3e robot instance
+        workspace        % Workspace boundaries for the simulation
+        gripper          % Gripper instance for the robot
+        safetyFeatures   % Safety features added to the environment
+    end
+    
+    %% Constructor and Initialization Methods
+    methods
+        function obj = UR3eSimulation()
+            % Constructor: Initializes the simulation environment, robot, and gripper.
+            % Calls methods to set up the environment and robot.
+            obj.initializeEnvironment();
+            obj.setupRobot();
+            obj.setupGripper();
+        end
+
+        function initializeEnvironment(obj)
+            % Initializes the workspace and sets up the environment and robot.
+            % Defines workspace boundaries, sets up the robot, and adds safety features.
+            disp('Initializing the workspace environment...');
+            obj.workspace = [-4 4 -4 4 -0.05 2]; % Define the workspace size in x, y, z limits
+            
+            % Set up the UR3e robot on linear rails
+            disp('Setting up the robot on linear rails...');
+            obj.robot = LinearUR3(); % Initialize the LinearUR3 robot with default parameters
+            
+            % Set up environment and safety features
+            obj.setupEnvironment();
+            obj.addSafetyFeatures();
+        end
+    end
+    
+    %% Environment Setup Methods
+    methods
+        function setupEnvironment(obj)
+            % Configures the environment for the simulation.
+            % Loads concrete texture for the floor, sets up the axis labels, and view settings.
+            clf; % Clear the current figure
+            disp('Setting up the environment...');
+            obj.loadConcreteTexture(); % Load and apply concrete texture to the floor
+            hold on; % Retain current plot when adding new elements
+            axis([-3, 3, -3, 3, 0, 3]); % Set axis limits
+            view(3); % Set the view to 3D
+            xlabel('X-axis'); % Label x-axis
+            ylabel('Y-axis'); % Label y-axis
+            zlabel('Z-axis'); % Label z-axis
+            title('UR3e Simulation with Safety Features'); % Set plot title
+        end
+        
+        function addSafetyFeatures(obj)
+            % Adds safety features and environment objects to the simulation.
+            % Places objects such as fire extinguishers, tables, emergency stop buttons, and fences.
+            disp('Adding safety features and environment objects...');
+            obj.concrete(); % Create and place the concrete floor texture
+            hold on; % Retain current plot when adding new elements
+            obj.placeObject('fireExtinguisher.ply', [1, 0.5, 0]); % Place a fire extinguisher
+            obj.placeObject('tableBrown2.1x1.4x0.5m.ply', [-0.25, 0, 0]); % Place a table
+            obj.placeObject('emergencyStopButton.ply', [0.5, 0.5, 0.55]); % Place an emergency stop button
+            obj.placeObject('personMaleConstruction.ply', [-2.5, 1, 0]); % Place a construction figure
+
+            % Define and place fences around the environment
+            obj.placeFences();
+            
+            % Set view and labels for the environment
+            view(3);
+            xlabel('X'); % Label x-axis
+            ylabel('Y'); % Label y-axis
+            zlabel('Z'); % Label z-axis
+            title('Environment with Safety Features'); % Set plot title
+        end
+        
+        function placeFences(obj)
+            % Place fences around the environment
+            fenceLength = 4;
+
+            % Fence on the positive side of the x-axis
+            fence1 = obj.placeObject('fenceFinal.ply', [1.8, 0, 0]);
+            verts1 = [get(fence1, 'Vertices'), ones(size(get(fence1, 'Vertices'), 1), 1)] * trotz(-pi/2);
+            verts1(:, 1) = verts1(:, 1) * 5; 
+            set(fence1, 'Vertices', verts1(:, 1:3));
+
+            % Fence on the negative side of the x-axis
+            fence2 = obj.placeObject('fenceFinal.ply', [-1.8, 0, 0]);
+            verts2 = [get(fence2, 'Vertices'), ones(size(get(fence2, 'Vertices'), 1), 1)] * trotz(-pi/2);
+            verts2(:, 1) = verts2(:, 1) * 5; 
+            set(fence2, 'Vertices', verts2(:, 1:3));
+
+            % Fence across the y-axis
+            fence3 = obj.placeObject('fenceFinal.ply', [0, 0, 0]);
+            verts3 = [get(fence3, 'Vertices'), ones(size(get(fence3, 'Vertices'), 1), 1)];
+            verts3(:, 2) = verts3(:, 2) * 5; 
+            verts3(:, 1) = verts3(:, 1) + 2; 
+            set(fence3, 'Vertices', verts3(:, 1:3));
+
+            % Additional fence across the y-axis
+            fence4 = obj.placeObject('fenceFinal.ply', [0, 0, 0]);
+            verts4 = [get(fence4, 'Vertices'), ones(size(get(fence4, 'Vertices'), 1), 1)];
+            verts4(:, 2) = verts4(:, 2) * 5; 
+            verts4(:, 1) = verts4(:, 1) - 2.2; 
+            set(fence4, 'Vertices', verts4(:, 1:3));
+        end
+        
+        function adjustFence(obj, fence, rotationAngle, scaleFactor, offset)
+            % Adjusts the fence vertices based on rotation, scale, and offset.
+            % Rotates and scales the fence to fit the desired position and orientation.
+            if nargin < 4
+                scaleFactor = 1; % Default scale factor if not provided
+            end
+            if nargin < 5
+                offset = 0; % Default offset if not provided
+            end
+            verts = [get(fence, 'Vertices'), ones(size(get(fence, 'Vertices'), 1), 1)] * trotz(rotationAngle);
+            verts(:, 1) = verts(:, 1) * scaleFactor + offset; % Adjust the vertices
+            set(fence, 'Vertices', verts(:, 1:3)); % Update the fence with new vertices
+        end
+        
+        function concrete(obj)
+            % Creates and places a concrete texture on the floor.
+            % Applies a texture map to create the appearance of a concrete floor.
+            surf([-3, -3; 3, 3], [-3, 3; -3, 3], [0.01, 0.01; 0.01, 0.01], ...
+                'CData', imread('concrete.jpg'), 'FaceColor', 'texturemap');
+        end
+        
+        function objHandle = placeObject(obj, filename, position)
+            % Places an object in the simulation environment at the specified position.
+            % Loads the object model and positions it within the environment.
+            disp(['Placing object: ', filename, ' at position: ', mat2str(position)]);
+            objHandle = PlaceObject(filename, position); % Load and place the object
+            hold on; % Retain current plot
+        end
+
+        function loadConcreteTexture(obj)
+            % Loads the concrete texture for the floor by calling the concrete method.
+            obj.concrete();
+        end
+    end
+    
+    %% Robot Setup Methods
+    methods
+        function setupRobot(obj)
+            % Sets up the UR3e robot model in the simulation environment.
+            % Configures the robot's base transformation and initializes it.
+            baseTransform = transl(0, 0, 0.55) * trotz(0); % Define base transformation
+            obj.robot = LinearUR3(baseTransform); % Initialize the robot with the base transform
+            assignin('base', 'ur3Robot', obj.robot); % Assign robot to the base workspace
+        end
+        
+        function setupGripper(obj)
+            % Sets up the gripper model for the robot.
+            % Initializes the gripper and plots it in the environment.
+            workspaceLimits = [-3, 3, -3, 3, 0, 3]; % Define workspace limits for plotting
+            obj.gripper = GripperClass(2); % Initialize the gripper class
+            obj.gripper.gripperModel{2}.base = obj.robot.model.fkine(obj.robot.model.getpos());
+            plot3d(obj.gripper.gripperModel{2}, 0, 'workspace', workspaceLimits, 'view', [-45, 45], 'delay', 0, 'noarrow', 'nowrist');
+            drawnow(); % Update the plot
+        end
+    end
+    
+    %% Robot Motion and Pose Methods
+    methods
+        function moveToJointStates(obj, jointStates)
+            % Moves the robot to the specified joint states.
+            % Validates the joint states and animates the robot to the new configuration.
+            disp('Moving robot to specified joint states...');
+            if isvector(jointStates) && length(jointStates) == obj.robot.model.n
+                obj.robot.model.q = jointStates; % Set joint states
+                obj.robot.model.animate(jointStates); % Animate robot
+                drawnow(); % Update the plot
+                disp('Robot moved to joint states.');
+            else
+                error('Invalid joint states input. Expected %d joint states.', obj.robot.model.n);
+            end
+        end
+        
+        function checkPose(obj, targetPose)
+            % Checks if the robot's end effector is within ±5mm of the target pose.
+            % Compares the current pose with the target pose and reports if they are close enough.
+            currentPose = obj.robot.model.fkine(obj.robot.model.getpos()); % Compute current pose
+            distance = norm(currentPose(1:3, 4) - targetPose(1:3, 4)); % Calculate distance
+            
+            if distance <= 0.005
+                disp('End effector is within ±5mm of the target pose.');
+            else
+                disp('End effector is NOT within ±5mm of the target pose.');
+            end
+        end
+
+        function demoPose(obj, jointStates, targetPose)
+            % Moves the robot to the specified joint states and checks the end effector pose.
+            % Combines moving the robot and verifying the pose in a single method.
+            obj.moveToJointStates(jointStates); % Move robot to joint states
+            obj.checkPose(targetPose); % Check if the pose is correct
+        end
+    end
+end
+               
