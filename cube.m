@@ -18,7 +18,9 @@ classdef cube < handle
         cubeModel;
         
         %> Dimensions of the workspace in regard to the paddock size
-        workspaceDimensions = [-0.2, 0.2, 0.17, 0.425, 0, 0.1]; % Set workspace dimensions for cubes
+        workspaceDimensions = [-0.2, 0.2, -0.17, -0.425, 0, 0.1]; % Set workspace dimensions for cubes
+
+        cubePositions  % Public property to store cube positions
     end
     
     methods
@@ -27,50 +29,46 @@ classdef cube < handle
             if nargin > 0
                 self.cubeCount = cubeCount;
             end
-
-            % Store the positions of the cubes to avoid overlap
-            cubePositions = zeros(self.cubeCount, 2);  % Only x and y positions are needed for comparison
             
-            % Create the required number of cubes
+            % Store the positions of the cubes
+            self.cubePositions = zeros(self.cubeCount, 3);
+            
+            % Create cubes
             for i = 1:self.cubeCount
-                self.cubeModel{i} = self.GetCubeModel(['cube', num2str(i)]); % Get the cube model
+                self.cubeModel{i} = self.GetCubeModel(['cube', num2str(i)]);
                 
-                % Initialize overlap check
+                % Ensure cubes do not overlap
                 overlap = true;
                 while overlap
-                    % Random spawn within the defined workspace
                     xPos = rand * (self.workspaceDimensions(2) - self.workspaceDimensions(1)) + self.workspaceDimensions(1);
                     yPos = rand * (self.workspaceDimensions(4) - self.workspaceDimensions(3)) + self.workspaceDimensions(3);
                     zPos = 0;
 
-                    % Check for overlap with existing cubes
+                    % Check for overlap
                     overlap = false;
                     for j = 1:i-1
-                        % Calculate distance between the current and previous cubes
-                        distance = sqrt((xPos - cubePositions(j, 1))^2 + (yPos - cubePositions(j, 2))^2);
-                        
-                        % If distance is too small (overlap), generate new position
-                        if distance < 0.1  % You can adjust this threshold based on the size of the cubes
+                        distance = sqrt((xPos - self.cubePositions(j, 1))^2 + (yPos - self.cubePositions(j, 2))^2);
+                        if distance < 0.1  % Adjust threshold based on cube size
                             overlap = true;
                             break;
                         end
                     end
                 end
 
-                % Store the new valid position
-                cubePositions(i, :) = [xPos, yPos];
+                % Store position in cubePositions
+                self.cubePositions(i, :) = [xPos, yPos, zPos];
 
-                % Create the base pose for the cube with valid position
-                basePose = transl(xPos, yPos, zPos);  % Create random position for each cube
-                % Print the position of the cube to the terminal
-                disp(['Cube ', num2str(i), ' position: ', 'X: ', num2str(xPos), ', Y: ', num2str(yPos), ', Z: ', num2str(zPos)]);
+                % Set cube base pose
+                basePose = transl(xPos, yPos, zPos);
+                self.cubeModel{i}.base = basePose;
 
-                self.cubeModel{i}.base = basePose;  % Assign base position
+                % Print cube position
+                disp(['Cube ', num2str(i), ' position: X: ', num2str(xPos), ', Y: ', num2str(yPos), ', Z: ', num2str(zPos)]);
                 
-                % Plot the 3D model of the cube
+                % Plot cube
                 plot3d(self.cubeModel{i}, 0, 'workspace', self.workspaceDimensions, 'view', [-30, 30], 'delay', 0, 'noarrow', 'nowrist');
-                
-                % Hold on after the first plot (if already on there's no difference)
+
+                % Ensure 'hold on' is set after first plot
                 if i == 1
                     hold on;
                 end
