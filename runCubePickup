@@ -1,0 +1,46 @@
+function runCubePickup()
+    % Define cube list
+    cubeList(1) = struct('id', 'cube1', 'position', [0.4, 0.2, 0], 'color', 'red');
+    cubeList(2) = struct('id', 'cube2', 'position', [0.1, 0.5, 0], 'color', 'blue');
+    cubeList(3) = struct('id', 'cube3', 'position', [0.3, 0.3, 0], 'color', 'green');
+
+    % Define robot's starting pose
+    startPose = [0, 0, 0];
+
+    % Call the function
+    pickupSequence = planCubePickupOrder(cubeList, startPose);
+
+    % Display result
+    disp("Pickup Order:");
+    for i = 1:length(pickupSequence)
+        fprintf("%d: %s at (%.2f, %.2f, %.2f)\n", ...
+            i, pickupSequence(i).id, pickupSequence(i).position);
+    end
+end
+
+function pickupSequence = planCubePickupOrder(cubeList, startPose)
+    currentPose = startPose;
+    remainingCubes = cubeList;
+    pickupSequence = [];
+
+    while ~isempty(remainingCubes)
+        % Calculate distances to all remaining cubes
+        distances = zeros(1, length(remainingCubes));
+        for i = 1:length(remainingCubes)
+            cubePos = remainingCubes(i).position;
+            distances(i) = norm(currentPose(1:2) - cubePos(1:2));  % 2D distance
+        end
+
+        % Find the closest cube
+        [~, closestIdx] = min(distances);
+
+        % Add to pickup sequence
+        pickupSequence = [pickupSequence, remainingCubes(closestIdx)];
+
+        % Update current pose
+        currentPose = remainingCubes(closestIdx).position;
+
+        % Remove the collected cube
+        remainingCubes(closestIdx) = [];
+    end
+end
