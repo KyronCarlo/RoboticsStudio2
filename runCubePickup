@@ -7,8 +7,11 @@ function runCubePickup()
     % Define robot's starting pose
     startPose = [0, 0, 0];
 
-    % Call the function
-    pickupSequence = planCubePickupOrder(cubeList, startPose);
+    % Define obstacle (example: position of a cylinder)
+    obstacleCenter = [0.0, -0.3, 0.3]; % Example obstacle at [x, y, z]
+
+    % Call the function to plan the cube pickup order
+    pickupSequence = planCubePickupOrder(cubeList, startPose, obstacleCenter);
 
     % Display result
     disp("Pickup Order:");
@@ -18,29 +21,147 @@ function runCubePickup()
     end
 end
 
-function pickupSequence = planCubePickupOrder(cubeList, startPose)
+function pickupSequence = planCubePickupOrder(cubeList, startPose, obstacleCenter)
     currentPose = startPose;
     remainingCubes = cubeList;
     pickupSequence = [];
 
     while ~isempty(remainingCubes)
-        % Calculate distances to all remaining cubes
+        % Find the next closest cube
         distances = zeros(1, length(remainingCubes));
         for i = 1:length(remainingCubes)
             cubePos = remainingCubes(i).position;
-            distances(i) = norm(currentPose(1:2) - cubePos(1:2));  % 2D distance
+            distances(i) = norm(currentPose(1:2) - cubePos(1:2));  % 2D distance (ignoring z)
         end
-
-        % Find the closest cube
         [~, closestIdx] = min(distances);
 
-        % Add to pickup sequence
-        pickupSequence = [pickupSequence, remainingCubes(closestIdx)];
+        % Get the position of the closest cube
+        nextCube = remainingCubes(closestIdx);
+        
+        % Check for collision and calculate the path to the cube
+        waypointsMatrix = checkAndPlanPath(currentPose, nextCube.position, obstacleCenter);
+
+        % Add to pickup sequence (use the computed waypoints)
+        for wp = 1:size(waypointsMatrix, 1)
+            pickupSequence = [pickupSequence, struct('id', nextCube.id, 'position', waypointsMatrix(wp, :), 'color', nextCube.color)];
+        end
 
         % Update current pose
-        currentPose = remainingCubes(closestIdx).position;
+        currentPose = nextCube.position;
 
-        % Remove the collected cube
+        % Remove the collected cube from the remaining cubes list
         remainingCubes(closestIdx) = [];
     end
+end
+
+% --- Check and Plan Path ---
+function waypointsMatrix = checkAndPlanPath(P0, P2, C)
+    % This function checks for a collision and returns a safe path using the collision avoidance code.
+
+    safeMargin = 0.03;   % Extra clearance in meters
+    projectedCylinderRadius = 0.03;   % Obstacle (cylinder) radius in meters
+    R = projectedCylinderRadius + safeMargin;  % Safe radius around the obstacle
+    zConstant = 0.3;  % Fixed z value for all waypoints
+
+    % Check for collision and generate waypoints
+    if checkCollision(P0(1:2), P2(1:2), C(1:2), R)
+        disp('Collision detected. Computing trapezoidal tangent-based avoidance path.');
+        numSteps = 50;  % Total number of waypoints for the avoidance path
+        pathPoints = tangentPathTrapezoid(P0(1:2), P2(1:2), C(1:2), R, numSteps);  % N×2 matrix [x, y]
+        
+        % Append a column of z values (fixed at zConstant)
+        waypointsMatrix = [pathPoints, repmat(zConstant, size(pathPoints, 1), 1)];
+    else
+        disp('Path is clear: commanding direct target.');
+        % Direct path consists of the start and target XY positions.
+        directPath = [P0(1:2); P2(1:2)];  % 2×2 matrix [x, y]
+        waypointsMatrix = [directPath, repmat(zConstant, size(directPath, 1), 1)];  % 2×3 matrix
+    end
+end
+
+% --- Simple Collision Checker ---
+function collision = checkCollision(P0, P1, C, R)
+    % Checks if the line segment from P0 to P1 (using XY components)
+    % comes closer than R to the obstacle center C.
+    %
+    % Inputs:
+    %   P0, P1, C - 1x2 vectors representing [x, y].
+    %   R         - Safe radius.
+    % Output:
+    %   collision - Logical true if a collision is detected.
+    
+    P0 = P0(:); P1 = P1(:); C = C(:);
+    
+    % Compute the projection factor t of C onto the line segment P0->P1.
+    v = P1 - P0;
+    w = C - P0;
+    t = dot(w, v) / dot(v, v);
+    t = max(0, min(1, t));  % Clamp t between 0 and 1
+    closestPoint = P0 + t * v;
+    distance = norm(C - closestPoint);
+    collision = (distance < R);
+end
+
+% --- Trapezoidal Tangent-Path Generator ---
+function waypoints = tangentPathTrapezoid(P0, P2, C, R, numSteps)
+    % Computes two tangent points on the safe circle around the obstacle (center C, radius R)
+    % and generates a trapezoidal avoidance path from P0 to P2.
+    %
+    % Inputs:
+    %   P0, P2   - 1x2 vectors [x, y] representing the start and target positions.
+    %   C        - 1x2 vector [x, y] representing the obstacle center.
+    %   R        - Safe radius.
+    %   numSteps - Total number of waypoints to generate.
+    %
+    % Output:
+    %   waypoints - An N×2 matrix of [x, y] coordinates representing the path.
+    
+    % Calculate angles from C to P0 and P2.
+    theta0 = atan2(P0(2) - C(2), P0(1) - C(1));
+    theta2 = atan2(P2(2) - C(2), P2(1) - C(1));
+    
+    % Determine candidate tangent angles for P0.
+    d0 = norm(P0 - C);
+    alpha0 = acos(R / d0);
+    candidateAngles0 = [theta0 + alpha0, theta0 - alpha0];
+    
+    % Determine candidate tangent angles for P2.
+    d2 = norm(P2 - C);
+    alpha2 = acos(R / d2);
+    candidateAngles2 = [theta2 + alpha2, theta2 - alpha2];
+    
+    % Select the candidate pair with the smallest angular difference.
+    bestDiff = inf;
+    for i = 1:2
+        for j = 1:2
+            diff = abs(wrapToPi(candidateAngles2(j) - candidateAngles0(i)));
+            if diff < bestDiff
+                bestDiff = diff;
+                tangentAngle0 = candidateAngles0(i);
+                tangentAngle2 = candidateAngles2(j);
+            end
+        end
+    end
+    
+    % Compute the two tangent points T1 and T3.
+    T1 = C + R * [cos(tangentAngle0), sin(tangentAngle0)];
+    T3 = C + R * [cos(tangentAngle2), sin(tangentAngle2)];
+    
+    % Divide the path into three segments: P0 -> T1, T1 -> T3, T3 -> P2.
+    n1 = round(numSteps * 0.3);
+    seg1 = [linspace(P0(1), T1(1), n1)', linspace(P0(2), T1(2), n1)'];
+    
+    n2 = round(numSteps * 0.4);
+    seg2 = [linspace(T1(1), T3(1), n2)', linspace(T1(2), T3(2), n2)'];
+    
+    n3 = numSteps - (n1 + n2);
+    seg3 = [linspace(T3(1), P2(1), n3)', linspace(T3(2), P2(2), n3)'];
+    
+    waypoints = [seg1; seg2; seg3];
+end
+
+% --- Wrap Angle to [-pi, pi] ---
+function angle = wrapToPi(angle)
+    % Wraps the input angle (in radians) to the interval [-pi, pi].
+    angle = mod(angle + pi, 2*pi) - pi;
 end
