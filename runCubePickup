@@ -1,3 +1,32 @@
+%% Cube Pickup and Path Planning
+% This script simulates a robot performing a cube pickup task in a 2D environment.
+% The robot navigates to the closest cube, checks for obstacles, and plans a safe 
+% path to pick it up. The task considers the following:
+%
+% INPUT VARIABLES:
+%   cubeList     - List of cubes with their positions and colors.
+%   startPose    - Initial position of the robot [x, y, z].
+%   obstacleCenter - Position of the obstacle (e.g., a cylinder) [x, y, z].
+%
+% PARAMETERS:
+%   safeMargin   - Extra clearance (meters) to avoid obstacles.
+%
+% OUTPUT VARIABLES:
+%   pickupSequence - Sequence of cubes to be picked up, with their corresponding
+%                    positions and colors, along with the computed waypoints.
+%
+% FUNCTIONALITY:
+%   1. Defines a list of cubes with positions and colors.
+%   2. Plans the cube pickup order by calculating the closest cube to the robot's 
+%      current position.
+%   3. Computes a safe path for the robot to avoid obstacles using collision 
+%      detection and path planning algorithms.
+%   4. Outputs the pickup order and waypoints for each cube.
+%
+% This script allows for a simple simulation of a robot performing a cube pickup 
+% task, ensuring collision-free navigation.
+
+%%
 function runCubePickup()
     % Define cube list
     cubeList(1) = struct('id', 'cube1', 'position', [0.4, 0.2, 0], 'color', 'red');
@@ -54,7 +83,7 @@ function pickupSequence = planCubePickupOrder(cubeList, startPose, obstacleCente
     end
 end
 
-% --- Check and Plan Path ---
+%% Check and Plan Path
 function waypointsMatrix = checkAndPlanPath(P0, P2, C)
     % This function checks for a collision and returns a safe path using the collision avoidance code.
 
@@ -79,7 +108,7 @@ function waypointsMatrix = checkAndPlanPath(P0, P2, C)
     end
 end
 
-% --- Simple Collision Checker ---
+%% Simple Collision Checker
 function collision = checkCollision(P0, P1, C, R)
     % Checks if the line segment from P0 to P1 (using XY components)
     % comes closer than R to the obstacle center C.
@@ -102,7 +131,7 @@ function collision = checkCollision(P0, P1, C, R)
     collision = (distance < R);
 end
 
-% --- Trapezoidal Tangent-Path Generator ---
+%% Trapezoidal Tangent-Path Generator
 function waypoints = tangentPathTrapezoid(P0, P2, C, R, numSteps)
     % Computes two tangent points on the safe circle around the obstacle (center C, radius R)
     % and generates a trapezoidal avoidance path from P0 to P2.
@@ -160,7 +189,7 @@ function waypoints = tangentPathTrapezoid(P0, P2, C, R, numSteps)
     waypoints = [seg1; seg2; seg3];
 end
 
-% --- Wrap Angle to [-pi, pi] ---
+%% Wrap Angle to [-pi, pi]
 function angle = wrapToPi(angle)
     % Wraps the input angle (in radians) to the interval [-pi, pi].
     angle = mod(angle + pi, 2*pi) - pi;
